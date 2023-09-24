@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Github User Info</title>
+  </head>
+  <body>
+    <h1>Github User Info</h1>
+    <div id="profile">
+      <img id="avatar" src="" alt="User Avatar" />
+      <p id="email">Email:</p>
+      <p id="userId">User ID:</p>
+    </div>
+    <script>
+      // Obtener el token desde la consulta "access_token"
+      const query = window.location.search.substring(1);
+      const token = query.split("access_token=")[1];
+
+      // Hacer una solicitud a la API de GitHub para obtener la información del usuario
+      fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: "token " + token,
+        },
+      })
+        .then((res) => res.json())
+        .then((res) => {
+          // Mostrar el nombre del usuario
+          const nameNode = document.createTextNode(`Welcome, ${res.name}`);
+          document.body.appendChild(nameNode);
+
+          // Mostrar la foto de perfil del usuario
+          const avatar = document.getElementById("avatar");
+          avatar.src = res.avatar_url;
+
+          // Mostrar el ID del usuario
+          const userIdNode = document.getElementById("userId");
+          userIdNode.textContent = `User ID: ${res.id}`;
+
+          const userEmailNode = document.getElementById("email");
+          userEmailNode.textContent = `Email: ${res.email}`;
+
+          console.log(res);
+        });
+    </script>
+  </body>
+</html>
