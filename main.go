@@ -5,66 +5,52 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+
+	"github.com/agustfricke/go-oauth-example/config"
+	"github.com/gofiber/fiber/v2"
 )
 
-const clientID = ""
-const clientSecret = ""
 
 func main() {
-	fs := http.FileServer(http.Dir("public"))
-	http.Handle("/", fs)
+	app := fiber.New()
 
-	// We will be using `httpClient` to make external HTTP requests later in our code
-	httpClient := http.Client{}
+	app.Static("/", "./public")
 
-	// Create a new redirect route route
-	http.HandleFunc("/oauth/redirect", func(w http.ResponseWriter, r *http.Request) {
-		// First, we need to get the value of the `code` query param
-		err := r.ParseForm()
-		if err != nil {
-			fmt.Fprintf(os.Stdout, "could not parse query: %v", err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		code := r.FormValue("code")
+	app.Get("/oauth/redirect", func(c *fiber.Ctx) error {
 
-		// Next, lets for the HTTP request to call the github oauth enpoint
-		// to get our access token
+		code := c.Query("code")
+    clientID := config.Config("CLIENT_ID")
+    clientSecret := config.Config("CLIENT_SECRET")
+
 		reqURL := fmt.Sprintf("https://github.com/login/oauth/access_token?client_id=%s&client_secret=%s&code=%s", clientID, clientSecret, code)
+
 		req, err := http.NewRequest(http.MethodPost, reqURL, nil)
 		if err != nil {
-			fmt.Fprintf(os.Stdout, "could not create HTTP request: %v", err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			fmt.Fprintf(os.Stdout, "no se pudo crear la solicitud HTTP: %v", err)
+			c.Status(http.StatusBadRequest)
+			return nil
 		}
-		// We set this header since we want the response
-		// as JSON
+
 		req.Header.Set("accept", "application/json")
 
-		// Send out the HTTP request
-		res, err := httpClient.Do(req)
+		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			fmt.Fprintf(os.Stdout, "could not send HTTP request: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+			fmt.Fprintf(os.Stdout, "no se pudo enviar la solicitud HTTP: %v", err)
+			c.Status(http.StatusInternalServerError)
+			return nil
 		}
 		defer res.Body.Close()
 
-		// Parse the request body into the `OAuthAccessResponse` struct
 		var t OAuthAccessResponse
 		if err := json.NewDecoder(res.Body).Decode(&t); err != nil {
-			fmt.Fprintf(os.Stdout, "could not parse JSON response: %v", err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+			fmt.Fprintf(os.Stdout, "no se pudo analizar la respuesta JSON: %v", err)
+			c.Status(http.StatusBadRequest)
+			return nil
 		}
 
-		// Finally, send a response to redirect the user to the "welcome" page
-		// with the access token
-		w.Header().Set("Location", "/welcome.html?access_token="+t.AccessToken)
-		w.WriteHeader(http.StatusFound)
+		return c.Redirect("/welcome.html?access_token=" + t.AccessToken, http.StatusFound)
 	})
-
-	http.ListenAndServe(":8080", nil)
+	app.Listen(":8080")
 }
 
 type OAuthAccessResponse struct {
