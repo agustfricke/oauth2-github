@@ -1,58 +1,65 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"os"
-
-	"github.com/agustfricke/go-oauth-example/config"
-	"github.com/gofiber/fiber/v2"
+    "log"
+    "github.com/gofiber/fiber/v2"
+    "golang.org/x/oauth2"
+    "github.com/google/go-github/v38/github"
 )
 
+var (
+    githubOauthConfig = oauth2.Config{
+        ClientID:     Config("CLIENT_ID"),
+        ClientSecret: Config("CLIENT_SECRET"),
+        RedirectURL:  "http://localhost:3000/auth/github/callback",
+        Scopes:       []string{"user"},
+        Endpoint:     oauth2.Endpoint{
+            AuthURL:  "https://github.com/login/oauth/authorize",
+            TokenURL: "https://github.com/login/oauth/access_token",
+        },
+    }
+)
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Static("/", "./public")
+    app.Get("/", func(c *fiber.Ctx) error {
+        return c.SendString("¡Bienvenido a la aplicación!")
+    })
 
-	app.Get("/oauth/redirect", func(c *fiber.Ctx) error {
+    app.Get("/auth/github", func(c *fiber.Ctx) error {
+        url := githubOauthConfig.AuthCodeURL("", oauth2.AccessTypeOffline)
+        return c.Redirect(url)
+    })
 
-		code := c.Query("code")
-    clientID := config.Config("CLIENT_ID")
-    clientSecret := config.Config("CLIENT_SECRET")
+    app.Get("/auth/github/callback", func(c *fiber.Ctx) error {
+        code := c.Query("code")
 
-		reqURL := fmt.Sprintf("https://github.com/login/oauth/access_token?client_id=%s&client_secret=%s&code=%s", clientID, clientSecret, code)
+        token, err := githubOauthConfig.Exchange(c.Context(), code)
+        if err != nil {
+            log.Println(err)
+            return c.SendStatus(fiber.StatusInternalServerError)
+        }
 
-		req, err := http.NewRequest(http.MethodPost, reqURL, nil)
-		if err != nil {
-			fmt.Fprintf(os.Stdout, "no se pudo crear la solicitud HTTP: %v", err)
-			c.Status(http.StatusBadRequest)
-			return nil
-		}
+        httpClient := githubOauthConfig.Client(c.Context(), token)
+        client := github.NewClient(httpClient)
 
-		req.Header.Set("accept", "application/json")
+        user, _, err := client.Users.Get(c.Context(), "")
+        if err != nil {
+            log.Println(err)
+            return c.SendStatus(fiber.StatusInternalServerError)
+        }
 
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			fmt.Fprintf(os.Stdout, "no se pudo enviar la solicitud HTTP: %v", err)
-			c.Status(http.StatusInternalServerError)
-			return nil
-		}
-		defer res.Body.Close()
+        // Convertir los datos del usuario a un mapa
+        userData := map[string]interface{}{
+            "name":      user.Name,
+            "avatar_url": user.AvatarURL,
+            "id":        user.ID,
+            "email":     user.Email,
+        }
+        // Devolver los datos en formato JSON
+        return c.JSON(userData)
+    })
 
-		var t OAuthAccessResponse
-		if err := json.NewDecoder(res.Body).Decode(&t); err != nil {
-			fmt.Fprintf(os.Stdout, "no se pudo analizar la respuesta JSON: %v", err)
-			c.Status(http.StatusBadRequest)
-			return nil
-		}
-
-		return c.Redirect("/welcome.html?access_token=" + t.AccessToken, http.StatusFound)
-	})
-	app.Listen(":8080")
-}
-
-type OAuthAccessResponse struct {
-	AccessToken string `json:"access_token"`
+    log.Fatal(app.Listen(":3000"))
 }

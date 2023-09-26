@@ -1,4 +1,4 @@
-package config
+package main
 
 import (
 	"fmt"
@@ -10,8 +10,7 @@ import (
 func Config(key string) string {
   err := godotenv.Load(".env")
   if err != nil {
-    fmt.Print("error loading .env file")
+    fmt.Print("Error loading .env file")
   }
   return os.Getenv(key)
-  
 }
